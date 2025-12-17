@@ -1,0 +1,202 @@
+<!doctype html>
+<html lang="nl">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>ZKP Hello World (Schnorr)</title>
+  <style>
+    body { font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif; margin: 24px; max-width: 900px; }
+    code, pre { background: #f6f8fa; padding: 2px 6px; border-radius: 6px; }
+    pre { padding: 12px; overflow: auto; }
+    .row { display: grid; grid-template-columns: 180px 1fr; gap: 10px; margin: 10px 0; align-items: center; }
+    button { padding: 10px 12px; border-radius: 10px; border: 1px solid #ddd; background: white; cursor: pointer; }
+    button:hover { background: #fafafa; }
+    .ok { color: #0a7; font-weight: 600; }
+    .bad { color: #c22; font-weight: 600; }
+    .small { color: #666; font-size: 0.95rem; }
+    input { padding: 8px 10px; border-radius: 10px; border: 1px solid #ddd; width: 100%; }
+    nav { margin-bottom: 20px; }
+    nav a { color: #0066cc; text-decoration: none; }
+    nav a:hover { text-decoration: underline; }
+  </style>
+</head>
+<body>
+  <nav><a href="index.html">&larr; Back to ZK-SNARK demo</a></nav>
+
+  <h1>ZKP Hello World — Schnorr proof (interactief)</h1>
+  <p class="small">
+    Doel: Prover bewijst kennis van <code>x</code> zodat <code>y = g^x mod p</code>, zonder <code>x</code> te tonen.<br/>
+    Verifier checkt: <code>g^s ≡ t · y^c (mod p)</code>.
+  </p>
+
+  <h2>1) Parameters (toy)</h2>
+  <div class="row"><div><b>p</b></div><div><code id="p"></code></div></div>
+  <div class="row"><div><b>q</b></div><div><code id="q"></code></div></div>
+  <div class="row"><div><b>g</b></div><div><code id="g"></code></div></div>
+  <p class="small">
+    We gebruiken een veilige-prime structuur: <code>p = 23</code>, <code>q = 11</code>, en een generator <code>g</code> van de orde-<code>q</code> subgroep.
+  </p>
+
+  <h2>2) Sleutel (geheim + publiek)</h2>
+  <div class="row">
+    <div>Geheim <b>x</b> (0..q-1)</div>
+    <div><input id="x" value="3" /></div>
+  </div>
+  <div class="row">
+    <div>Publiek <b>y = g^x mod p</b></div>
+    <div><code id="y"></code></div>
+  </div>
+  <button id="btnKey">Bereken y</button>
+
+  <h2>3) Proof (commit → challenge → response)</h2>
+  <div class="row"><div>Random <b>r</b></div><div><code id="r"></code></div></div>
+  <div class="row"><div>Commit <b>t = g^r mod p</b></div><div><code id="t"></code></div></div>
+  <button id="btnCommit">Maak commitment (t)</button>
+
+  <div class="row"><div>Challenge <b>c</b> (0..q-1)</div><div><code id="c"></code></div></div>
+  <button id="btnChallenge">Verifier kiest challenge (c)</button>
+
+  <div class="row"><div>Response <b>s = (r + c·x) mod q</b></div><div><code id="s"></code></div></div>
+  <button id="btnRespond">Prover maakt response (s)</button>
+
+  <h2>4) Verificatie</h2>
+  <div class="row"><div>Links: <b>g^s mod p</b></div><div><code id="lhs"></code></div></div>
+  <div class="row"><div>Rechts: <b>t · y^c mod p</b></div><div><code id="rhs"></code></div></div>
+  <div class="row"><div>Resultaat</div><div id="result"></div></div>
+  <button id="btnVerify">Verifier check</button>
+
+  <hr/>
+  <p class="small">
+    Tip: verander <code>x</code> na het commitment maar vóór response om te zien dat verificatie faalt.
+  </p>
+
+<script>
+  // --- Toy group parameters (NOT secure) ---
+  // Safe prime p=23, q=11 (q divides p-1). Use generator g=2 of subgroup order 11? Actually 2 has order 11 mod 23.
+  const P = 23n;
+  const Q = 11n;
+  const G = 2n;
+
+  // --- BigInt modular arithmetic helpers ---
+  function mod(a, m) {
+    const r = a % m;
+    return r >= 0n ? r : r + m;
+  }
+
+  function modPow(base, exp, modn) {
+    base = mod(base, modn);
+    let res = 1n;
+    while (exp > 0n) {
+      if (exp & 1n) res = mod(res * base, modn);
+      base = mod(base * base, modn);
+      exp >>= 1n;
+    }
+    return res;
+  }
+
+  function randBelow(n) {
+    // uniform-ish for small n; for demo only
+    const buf = new Uint32Array(1);
+    crypto.getRandomValues(buf);
+    return BigInt(buf[0]) % n;
+  }
+
+  // --- UI state ---
+  let r = null, t = null, c = null, s = null, y = null;
+
+  const el = (id) => document.getElementById(id);
+
+  function renderParams() {
+    el("p").textContent = P.toString();
+    el("q").textContent = Q.toString();
+    el("g").textContent = G.toString();
+  }
+
+  function computeY() {
+    const x = BigInt(el("x").value.trim());
+    if (x < 0n || x >= Q) {
+      alert("x moet tussen 0 en q-1 liggen.");
+      return;
+    }
+    y = modPow(G, x, P);
+    el("y").textContent = y.toString();
+
+    // reset proof state
+    r = t = c = s = null;
+    el("r").textContent = el("t").textContent = el("c").textContent = el("s").textContent = "—";
+    el("lhs").textContent = el("rhs").textContent = "—";
+    el("result").textContent = "";
+  }
+
+  function makeCommit() {
+    if (y === null) computeY();
+    r = randBelow(Q);
+    t = modPow(G, r, P);
+    el("r").textContent = r.toString();
+    el("t").textContent = t.toString();
+
+    c = s = null;
+    el("c").textContent = el("s").textContent = "—";
+    el("lhs").textContent = el("rhs").textContent = "—";
+    el("result").textContent = "";
+  }
+
+  function makeChallenge() {
+    if (t === null) {
+      alert("Maak eerst commitment (t).");
+      return;
+    }
+    c = randBelow(Q);
+    el("c").textContent = c.toString();
+
+    s = null;
+    el("s").textContent = "—";
+    el("lhs").textContent = el("rhs").textContent = "—";
+    el("result").textContent = "";
+  }
+
+  function makeResponse() {
+    if (c === null) {
+      alert("Verifier moet eerst challenge (c) kiezen.");
+      return;
+    }
+    const x = BigInt(el("x").value.trim());
+    // s = (r + c*x) mod q
+    s = mod(r + c * x, Q);
+    el("s").textContent = s.toString();
+
+    el("lhs").textContent = el("rhs").textContent = "—";
+    el("result").textContent = "";
+  }
+
+  function verify() {
+    if (s === null) {
+      alert("Maak eerst response (s).");
+      return;
+    }
+    // check g^s == t * y^c (mod p)
+    const lhs = modPow(G, s, P);
+    const rhs = mod(t * modPow(y, c, P), P);
+
+    el("lhs").textContent = lhs.toString();
+    el("rhs").textContent = rhs.toString();
+
+    if (lhs === rhs) {
+      el("result").innerHTML = '<span class="ok">✅ OK — proof geverifieerd (zonder x te kennen)</span>';
+    } else {
+      el("result").innerHTML = '<span class="bad">❌ FAIL — proof ongeldig</span>';
+    }
+  }
+
+  // Wire up buttons
+  renderParams();
+  computeY();
+
+  el("btnKey").addEventListener("click", computeY);
+  el("btnCommit").addEventListener("click", makeCommit);
+  el("btnChallenge").addEventListener("click", makeChallenge);
+  el("btnRespond").addEventListener("click", makeResponse);
+  el("btnVerify").addEventListener("click", verify);
+</script>
+</body>
+</html>
