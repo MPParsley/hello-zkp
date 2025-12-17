@@ -1,0 +1,348 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Hello ZKP! - Zero-Knowledge Proof Demo</title>
+    <script src="https://cdn.jsdelivr.net/npm/snarkjs@0.7.4/build/snarkjs.min.js"></script>
+    <style>
+        * {
+            box-sizing: border-box;
+        }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+            background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+            min-height: 100vh;
+            color: #eee;
+        }
+        h1 {
+            text-align: center;
+            color: #00d4ff;
+            text-shadow: 0 0 20px rgba(0, 212, 255, 0.5);
+        }
+        .explanation {
+            background: rgba(255, 255, 255, 0.1);
+            padding: 20px;
+            border-radius: 10px;
+            margin-bottom: 30px;
+            border-left: 4px solid #00d4ff;
+        }
+        .container {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 20px;
+        }
+        @media (max-width: 600px) {
+            .container {
+                grid-template-columns: 1fr;
+            }
+        }
+        .card {
+            background: rgba(255, 255, 255, 0.05);
+            padding: 20px;
+            border-radius: 10px;
+            border: 1px solid rgba(255, 255, 255, 0.1);
+        }
+        .card h2 {
+            margin-top: 0;
+            color: #00d4ff;
+            font-size: 1.2em;
+        }
+        input {
+            width: 100%;
+            padding: 12px;
+            margin: 10px 0;
+            border: 2px solid rgba(0, 212, 255, 0.3);
+            border-radius: 5px;
+            font-size: 16px;
+            background: rgba(0, 0, 0, 0.3);
+            color: #fff;
+        }
+        input:focus {
+            outline: none;
+            border-color: #00d4ff;
+            box-shadow: 0 0 10px rgba(0, 212, 255, 0.3);
+        }
+        button {
+            width: 100%;
+            padding: 12px 24px;
+            background: linear-gradient(135deg, #00d4ff 0%, #0099cc 100%);
+            color: #000;
+            border: none;
+            border-radius: 5px;
+            font-size: 16px;
+            font-weight: bold;
+            cursor: pointer;
+            transition: transform 0.2s, box-shadow 0.2s;
+        }
+        button:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 5px 20px rgba(0, 212, 255, 0.4);
+        }
+        button:disabled {
+            background: #666;
+            cursor: not-allowed;
+            transform: none;
+        }
+        .result {
+            margin-top: 20px;
+            padding: 15px;
+            border-radius: 5px;
+            font-family: monospace;
+            font-size: 14px;
+            word-break: break-all;
+            max-height: 200px;
+            overflow-y: auto;
+        }
+        .success {
+            background: rgba(0, 255, 136, 0.2);
+            border: 1px solid #00ff88;
+        }
+        .error {
+            background: rgba(255, 68, 68, 0.2);
+            border: 1px solid #ff4444;
+        }
+        .info {
+            background: rgba(0, 212, 255, 0.2);
+            border: 1px solid #00d4ff;
+        }
+        .loading {
+            display: inline-block;
+            width: 20px;
+            height: 20px;
+            border: 3px solid rgba(255,255,255,.3);
+            border-radius: 50%;
+            border-top-color: #fff;
+            animation: spin 1s ease-in-out infinite;
+        }
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+        .how-it-works {
+            margin-top: 30px;
+        }
+        .how-it-works h2 {
+            color: #00d4ff;
+        }
+        .step {
+            display: flex;
+            align-items: flex-start;
+            margin: 15px 0;
+        }
+        .step-num {
+            background: #00d4ff;
+            color: #000;
+            width: 30px;
+            height: 30px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: bold;
+            margin-right: 15px;
+            flex-shrink: 0;
+        }
+        code {
+            background: rgba(0, 0, 0, 0.3);
+            padding: 2px 6px;
+            border-radius: 3px;
+            font-family: monospace;
+        }
+        .public-value {
+            font-size: 2em;
+            text-align: center;
+            color: #00ff88;
+            margin: 10px 0;
+        }
+    </style>
+</head>
+<body>
+    <h1>🔐 Hello ZKP!</h1>
+
+    <div class="explanation">
+        <strong>What is this?</strong> This demo shows a Zero-Knowledge Proof in action.
+        You can prove you know a secret number <em>without revealing it</em>.
+        <br><br>
+        <strong>The challenge:</strong> Prove you know the square root of a number, without telling anyone what it is!
+    </div>
+
+    <div class="container">
+        <div class="card">
+            <h2>🎭 Prover (You)</h2>
+            <p>Enter your secret number. You'll prove you know it without revealing it.</p>
+            <input type="number" id="secretInput" placeholder="Enter a secret number (e.g., 7)" />
+            <p>Public square: <span class="public-value" id="publicSquare">--</span></p>
+            <button id="generateProof" onclick="generateProof()">Generate Proof</button>
+            <div id="proofResult"></div>
+        </div>
+
+        <div class="card">
+            <h2>✅ Verifier (Anyone)</h2>
+            <p>Verify the proof is valid without learning the secret.</p>
+            <p>Verifying that someone knows √<span id="verifySquare">--</span></p>
+            <button id="verifyProof" onclick="verifyProof()" disabled>Verify Proof</button>
+            <div id="verifyResult"></div>
+        </div>
+    </div>
+
+    <div class="how-it-works">
+        <h2>How it works</h2>
+        <div class="step">
+            <div class="step-num">1</div>
+            <div>
+                <strong>You have a secret:</strong> A number that only you know (e.g., <code>7</code>)
+            </div>
+        </div>
+        <div class="step">
+            <div class="step-num">2</div>
+            <div>
+                <strong>Public information:</strong> Everyone can see the square (<code>49</code>), but not your secret
+            </div>
+        </div>
+        <div class="step">
+            <div class="step-num">3</div>
+            <div>
+                <strong>Generate proof:</strong> Using ZK-SNARKs, create a cryptographic proof that you know the square root
+            </div>
+        </div>
+        <div class="step">
+            <div class="step-num">4</div>
+            <div>
+                <strong>Verify:</strong> Anyone can verify your proof is valid, but they learn nothing about your secret!
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let currentProof = null;
+        let publicSignals = null;
+
+        // Calculate square as user types
+        document.getElementById('secretInput').addEventListener('input', function() {
+            const secret = parseInt(this.value) || 0;
+            const square = secret * secret;
+            document.getElementById('publicSquare').textContent = square || '--';
+            document.getElementById('verifySquare').textContent = square || '--';
+        });
+
+        async function generateProof() {
+            const secretInput = document.getElementById('secretInput');
+            const secret = parseInt(secretInput.value);
+
+            if (isNaN(secret) || secret < 1) {
+                showResult('proofResult', 'Please enter a valid positive number', 'error');
+                return;
+            }
+
+            const publicSquare = secret * secret;
+            const btn = document.getElementById('generateProof');
+            btn.disabled = true;
+            btn.innerHTML = '<span class="loading"></span> Generating...';
+
+            showResult('proofResult', 'Generating ZK proof... This may take a moment.', 'info');
+
+            try {
+                // Prepare the input for the circuit
+                const input = {
+                    secret: secret.toString(),
+                    publicSquare: publicSquare.toString()
+                };
+
+                // Generate the proof
+                const { proof, publicSignals: signals } = await snarkjs.groth16.fullProve(
+                    input,
+                    'secret.wasm',
+                    'secret_final.zkey'
+                );
+
+                currentProof = proof;
+                publicSignals = signals;
+
+                // Enable verify button
+                document.getElementById('verifyProof').disabled = false;
+
+                showResult('proofResult',
+                    `✅ Proof generated!\n\nProof (truncated):\n${JSON.stringify(proof, null, 2).substring(0, 300)}...\n\nPublic signals: [${signals.join(', ')}]`,
+                    'success'
+                );
+            } catch (error) {
+                showResult('proofResult', `❌ Error: ${error.message}`, 'error');
+            }
+
+            btn.disabled = false;
+            btn.textContent = 'Generate Proof';
+        }
+
+        async function verifyProof() {
+            if (!currentProof || !publicSignals) {
+                showResult('verifyResult', 'No proof to verify! Generate one first.', 'error');
+                return;
+            }
+
+            const btn = document.getElementById('verifyProof');
+            btn.disabled = true;
+            btn.innerHTML = '<span class="loading"></span> Verifying...';
+
+            showResult('verifyResult', 'Verifying proof...', 'info');
+
+            try {
+                // Load verification key
+                const vkeyResponse = await fetch('verification_key.json');
+                const vkey = await vkeyResponse.json();
+
+                // Verify the proof
+                const isValid = await snarkjs.groth16.verify(vkey, publicSignals, currentProof);
+
+                if (isValid) {
+                    showResult('verifyResult',
+                        `✅ PROOF VALID!\n\nThe prover knows the square root of ${publicSignals[0]}, but we don't know what it is!\n\nThis is the magic of Zero-Knowledge Proofs.`,
+                        'success'
+                    );
+                } else {
+                    showResult('verifyResult', '❌ Proof is INVALID!', 'error');
+                }
+            } catch (error) {
+                showResult('verifyResult', `❌ Error: ${error.message}`, 'error');
+            }
+
+            btn.disabled = false;
+            btn.textContent = 'Verify Proof';
+        }
+
+        function showResult(elementId, message, type) {
+            const el = document.getElementById(elementId);
+            el.className = `result ${type}`;
+            el.innerHTML = `<pre>${message}</pre>`;
+        }
+
+        // Check if required files are available
+        async function checkFiles() {
+            try {
+                const [wasmRes, zkeyRes, vkeyRes] = await Promise.all([
+                    fetch('secret.wasm', { method: 'HEAD' }),
+                    fetch('secret_final.zkey', { method: 'HEAD' }),
+                    fetch('verification_key.json', { method: 'HEAD' })
+                ]);
+
+                if (!wasmRes.ok || !zkeyRes.ok || !vkeyRes.ok) {
+                    throw new Error('Files not found');
+                }
+                console.log('All circuit files loaded successfully!');
+            } catch (e) {
+                showResult('proofResult',
+                    'Circuit files not found. If running locally, run:\n\nnpm run setup && npm run build\n\nOr wait for GitHub Actions to deploy.',
+                    'info'
+                );
+                document.getElementById('generateProof').disabled = true;
+            }
+        }
+
+        // Initialize
+        console.log('Hello ZKP loaded! Using snarkjs version:', snarkjs.version || 'unknown');
+        checkFiles();
+    </script>
+</body>
+</html>

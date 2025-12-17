@@ -1,0 +1,16 @@
+{
+  "name": "hello-zkp",
+  "version": "1.0.0",
+  "description": "A simple Zero-Knowledge Proof Hello World demo",
+  "scripts": {
+    "setup": "bash scripts/setup.sh",
+    "build": "bash scripts/build.sh",
+    "serve": "npx http-server docs -p 8080"
+  },
+  "devDependencies": {
+    "circomlib": "^2.0.5",
+    "snarkjs": "^0.7.4"
+  },
+  "keywords": ["zkp", "zero-knowledge", "snarkjs", "circom"],
+  "license": "MIT"
+}

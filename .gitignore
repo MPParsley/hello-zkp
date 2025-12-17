@@ -1,0 +1,20 @@
+# Dependencies
+node_modules/
+
+# Build artifacts
+build/
+
+# Generated files (built by CI)
+docs/secret.wasm
+docs/secret_final.zkey
+docs/verification_key.json
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Editor files
+*.swp
+*.swo
+.vscode/
+.idea/

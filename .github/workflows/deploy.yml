@@ -1,0 +1,80 @@
+name: Build and Deploy ZKP Demo
+
+on:
+  push:
+    branches: [main, master]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: "pages"
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install Circom
+        run: |
+          curl -L "https://github.com/iden3/circom/releases/download/v2.1.6/circom-linux-amd64" -o circom
+          chmod +x circom
+          sudo mv circom /usr/local/bin/circom
+          circom --version
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Compile circuit
+        run: |
+          mkdir -p build
+          circom circuits/secret.circom --r1cs --wasm --sym -o build
+
+      - name: Download Powers of Tau
+        run: |
+          curl -L "https://storage.googleapis.com/zkevm/ptau/powersOfTau28_hez_final_12.ptau" -o build/pot12_final.ptau
+
+      - name: Generate proving key
+        run: |
+          npx snarkjs groth16 setup build/secret.r1cs build/pot12_final.ptau build/secret_0000.zkey
+          echo "hello-zkp-build" | npx snarkjs zkey contribute build/secret_0000.zkey build/secret_final.zkey --name="GitHub Actions" -v
+
+      - name: Export verification key
+        run: |
+          npx snarkjs zkey export verificationkey build/secret_final.zkey docs/verification_key.json
+
+      - name: Copy WASM and zkey to docs
+        run: |
+          cp build/secret_js/secret.wasm docs/
+          cp build/secret_final.zkey docs/
+
+      - name: Setup Pages
+        uses: actions/configure-pages@v4
+
+      - name: Upload artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: './docs'
+
+  deploy:
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    runs-on: ubuntu-latest
+    needs: build
+    steps:
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
