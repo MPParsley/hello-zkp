@@ -94,43 +94,136 @@
     "schnorrProof": {
       "type": "object",
       "title": "Schnorr Sigma Protocol Proof",
-      "required": ["t", "c", "s", "params"],
+      "description": "Volledig Schnorr identificatie protocol transcript",
+      "required": ["t", "c", "s", "params", "transcript"],
       "properties": {
+        "protocol": {
+          "type": "string",
+          "const": "schnorr",
+          "description": "Protocol identifier"
+        },
         "params": {
           "type": "object",
+          "title": "Groep Parameters",
+          "description": "Cryptografische groep parameters voor het Schnorr protocol",
           "required": ["p", "q", "g"],
           "properties": {
             "p": {
               "type": "string",
               "pattern": "^[0-9]+$",
-              "description": "Prime modulus"
+              "description": "Prime modulus (veilige prime)"
             },
             "q": {
               "type": "string",
               "pattern": "^[0-9]+$",
-              "description": "Subgroup orde"
+              "description": "Subgroup orde (q deelt p-1)"
             },
             "g": {
               "type": "string",
               "pattern": "^[0-9]+$",
-              "description": "Generator"
+              "description": "Generator van de subgroep met orde q"
+            },
+            "securityLevel": {
+              "type": "integer",
+              "minimum": 1,
+              "description": "Beveiligingsniveau in bits (bijv. 128, 256)"
+            }
+          }
+        },
+        "transcript": {
+          "type": "object",
+          "title": "Protocol Transcript",
+          "description": "Volledig transcript van het 3-move sigma protocol",
+          "required": ["commitment", "challenge", "response"],
+          "properties": {
+            "commitment": {
+              "type": "object",
+              "description": "Stap 1: Prover commitment",
+              "required": ["t"],
+              "properties": {
+                "r": {
+                  "type": "string",
+                  "pattern": "^[0-9]+$",
+                  "description": "Random nonce r ∈ Zq (normaal geheim, hier voor educatie)"
+                },
+                "t": {
+                  "type": "string",
+                  "pattern": "^[0-9]+$",
+                  "description": "Commitment t = g^r mod p"
+                }
+              }
+            },
+            "challenge": {
+              "type": "object",
+              "description": "Stap 2: Verifier challenge",
+              "required": ["c"],
+              "properties": {
+                "c": {
+                  "type": "string",
+                  "pattern": "^[0-9]+$",
+                  "description": "Random challenge c ∈ Zq"
+                },
+                "source": {
+                  "type": "string",
+                  "enum": ["interactive", "fiat-shamir"],
+                  "description": "Hoe de challenge is gegenereerd"
+                }
+              }
+            },
+            "response": {
+              "type": "object",
+              "description": "Stap 3: Prover response",
+              "required": ["s"],
+              "properties": {
+                "s": {
+                  "type": "string",
+                  "pattern": "^[0-9]+$",
+                  "description": "Response s = (r + c·x) mod q"
+                }
+              }
             }
           }
         },
         "t": {
           "type": "string",
           "pattern": "^[0-9]+$",
-          "description": "Commitment t = g^r mod p"
+          "description": "Commitment t = g^r mod p (shorthand)"
         },
         "c": {
           "type": "string",
           "pattern": "^[0-9]+$",
-          "description": "Challenge (random)"
+          "description": "Challenge c (shorthand)"
         },
         "s": {
           "type": "string",
           "pattern": "^[0-9]+$",
-          "description": "Response s = (r + c*x) mod q"
+          "description": "Response s = (r + c·x) mod q (shorthand)"
+        },
+        "verification": {
+          "type": "object",
+          "title": "Verificatie Resultaat",
+          "description": "Verificatie berekeningen en resultaat",
+          "properties": {
+            "lhs": {
+              "type": "string",
+              "pattern": "^[0-9]+$",
+              "description": "Linkerkant: g^s mod p"
+            },
+            "rhs": {
+              "type": "string",
+              "pattern": "^[0-9]+$",
+              "description": "Rechterkant: t · y^c mod p"
+            },
+            "equation": {
+              "type": "string",
+              "const": "g^s ≡ t · y^c (mod p)",
+              "description": "Verificatie vergelijking"
+            },
+            "valid": {
+              "type": "boolean",
+              "description": "Of lhs === rhs"
+            }
+          }
         }
       }
     }
