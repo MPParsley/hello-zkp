@@ -1,0 +1,538 @@
+#!/bin/bash
+set -e
+
+echo "🔗 Combining meter (ZK-SNARK) and display (Schnorr) projects..."
+
+# Create output directory
+mkdir -p docs/combined
+mkdir -p docs/schemas
+
+# Copy schema
+echo "📋 Copying JSON schema..."
+cp schemas/zkp-proof.schema.json docs/schemas/
+
+# Generate combined HTML page
+echo "📝 Generating combined dashboard..."
+cat > docs/combined/index.html << 'HTMLEOF'
+<!DOCTYPE html>
+<html lang="nl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ZKP Dashboard - Meter & Display</title>
+    <script src="https://cdn.jsdelivr.net/npm/snarkjs@0.7.4/build/snarkjs.min.js"></script>
+    <style>
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+            min-height: 100vh;
+            color: #eee;
+            padding: 20px;
+        }
+        header {
+            text-align: center;
+            margin-bottom: 30px;
+        }
+        h1 {
+            color: #00d4ff;
+            text-shadow: 0 0 20px rgba(0, 212, 255, 0.5);
+            margin-bottom: 10px;
+        }
+        .subtitle { color: #888; font-size: 0.9rem; }
+
+        .dashboard {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 20px;
+            max-width: 1400px;
+            margin: 0 auto;
+        }
+        @media (max-width: 900px) {
+            .dashboard { grid-template-columns: 1fr; }
+        }
+
+        .panel {
+            background: rgba(255, 255, 255, 0.05);
+            border-radius: 15px;
+            padding: 25px;
+            border: 1px solid rgba(255, 255, 255, 0.1);
+        }
+        .panel h2 {
+            color: #00d4ff;
+            margin-bottom: 15px;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        .panel-icon {
+            font-size: 1.5em;
+        }
+
+        /* Proof history */
+        .proof-history {
+            grid-column: 1 / -1;
+        }
+        .proof-list {
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+            max-height: 300px;
+            overflow-y: auto;
+        }
+        .proof-item {
+            background: rgba(0, 0, 0, 0.2);
+            padding: 15px;
+            border-radius: 8px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            border-left: 4px solid #00d4ff;
+        }
+        .proof-item.groth16 { border-left-color: #00ff88; }
+        .proof-item.schnorr { border-left-color: #ff9500; }
+        .proof-type {
+            font-weight: bold;
+            font-size: 0.8em;
+            padding: 4px 8px;
+            border-radius: 4px;
+            background: rgba(255, 255, 255, 0.1);
+        }
+        .proof-status {
+            font-size: 1.2em;
+        }
+
+        /* Forms */
+        .form-group {
+            margin: 15px 0;
+        }
+        label {
+            display: block;
+            margin-bottom: 5px;
+            color: #aaa;
+        }
+        input {
+            width: 100%;
+            padding: 12px;
+            border: 2px solid rgba(0, 212, 255, 0.3);
+            border-radius: 8px;
+            background: rgba(0, 0, 0, 0.3);
+            color: #fff;
+            font-size: 16px;
+        }
+        input:focus {
+            outline: none;
+            border-color: #00d4ff;
+        }
+        button {
+            width: 100%;
+            padding: 12px;
+            background: linear-gradient(135deg, #00d4ff 0%, #0099cc 100%);
+            color: #000;
+            border: none;
+            border-radius: 8px;
+            font-weight: bold;
+            cursor: pointer;
+            margin-top: 10px;
+            transition: all 0.2s;
+        }
+        button:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 5px 20px rgba(0, 212, 255, 0.4);
+        }
+        button:disabled {
+            background: #666;
+            cursor: not-allowed;
+            transform: none;
+        }
+        button.secondary {
+            background: linear-gradient(135deg, #ff9500 0%, #cc7700 100%);
+        }
+
+        .result {
+            margin-top: 15px;
+            padding: 15px;
+            border-radius: 8px;
+            font-family: monospace;
+            font-size: 13px;
+            max-height: 150px;
+            overflow: auto;
+        }
+        .success { background: rgba(0, 255, 136, 0.2); border: 1px solid #00ff88; }
+        .error { background: rgba(255, 68, 68, 0.2); border: 1px solid #ff4444; }
+        .info { background: rgba(0, 212, 255, 0.2); border: 1px solid #00d4ff; }
+
+        .value-display {
+            font-size: 2em;
+            text-align: center;
+            color: #00ff88;
+            margin: 10px 0;
+        }
+
+        /* Schema viewer */
+        .schema-viewer {
+            background: rgba(0, 0, 0, 0.3);
+            padding: 15px;
+            border-radius: 8px;
+            max-height: 200px;
+            overflow: auto;
+            font-family: monospace;
+            font-size: 12px;
+        }
+
+        code { background: rgba(0,0,0,0.3); padding: 2px 6px; border-radius: 4px; }
+        .loading {
+            display: inline-block;
+            width: 16px;
+            height: 16px;
+            border: 2px solid rgba(255,255,255,.3);
+            border-radius: 50%;
+            border-top-color: #fff;
+            animation: spin 1s linear infinite;
+        }
+        @keyframes spin { to { transform: rotate(360deg); } }
+
+        .tabs {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 20px;
+        }
+        .tab {
+            flex: 1;
+            padding: 10px;
+            background: rgba(255,255,255,0.05);
+            border: none;
+            border-radius: 8px;
+            color: #aaa;
+            cursor: pointer;
+        }
+        .tab.active {
+            background: rgba(0, 212, 255, 0.2);
+            color: #00d4ff;
+        }
+    </style>
+</head>
+<body>
+    <header>
+        <h1>🔐 ZKP Dashboard</h1>
+        <p class="subtitle">Gecombineerde Meter (ZK-SNARK) & Display (Schnorr) met gedeeld schema</p>
+    </header>
+
+    <div class="dashboard">
+        <!-- Groth16 Panel (Meter) -->
+        <div class="panel">
+            <h2><span class="panel-icon">📊</span> Meter (ZK-SNARK)</h2>
+            <p>Bewijs dat je een geheime wortel kent zonder deze te onthullen.</p>
+
+            <div class="form-group">
+                <label>Geheim getal:</label>
+                <input type="number" id="snark-secret" placeholder="Voer je geheime getal in (bijv. 7)" />
+            </div>
+            <div>
+                <label>Publiek kwadraat:</label>
+                <div class="value-display" id="snark-square">--</div>
+            </div>
+            <button id="btn-snark-prove" onclick="generateGroth16Proof()">Genereer Proof</button>
+            <button onclick="verifyGroth16Proof()" style="background: linear-gradient(135deg, #00ff88, #00cc66);">Verifieer</button>
+            <div id="snark-result" class="result info" style="display:none;"></div>
+        </div>
+
+        <!-- Schnorr Panel (Display) -->
+        <div class="panel">
+            <h2><span class="panel-icon">🖥️</span> Display (Schnorr)</h2>
+            <p>Interactief Schnorr sigma-protocol bewijs.</p>
+
+            <div class="form-group">
+                <label>Geheim x (0..10):</label>
+                <input type="number" id="schnorr-x" value="3" min="0" max="10" />
+            </div>
+            <div>
+                <label>Publieke sleutel y = g<sup>x</sup> mod p:</label>
+                <div class="value-display" id="schnorr-y">--</div>
+            </div>
+            <div class="tabs">
+                <button class="tab active" onclick="schnorrStep('commit')">1. Commit</button>
+                <button class="tab" onclick="schnorrStep('challenge')">2. Challenge</button>
+                <button class="tab" onclick="schnorrStep('respond')">3. Response</button>
+            </div>
+            <button class="secondary" onclick="schnorrVerify()">Verifieer Schnorr Proof</button>
+            <div id="schnorr-result" class="result info" style="display:none;"></div>
+        </div>
+
+        <!-- Proof History -->
+        <div class="panel proof-history">
+            <h2><span class="panel-icon">📜</span> Proof Geschiedenis</h2>
+            <p>Alle gegenereerde proofs volgens het gedeelde schema.</p>
+            <div class="proof-list" id="proof-list">
+                <div style="color: #666; text-align: center; padding: 20px;">
+                    Nog geen proofs gegenereerd...
+                </div>
+            </div>
+            <button onclick="exportProofs()" style="margin-top: 15px; background: linear-gradient(135deg, #9966ff, #6633cc);">
+                📥 Exporteer als JSON
+            </button>
+        </div>
+
+        <!-- Schema Viewer -->
+        <div class="panel" style="grid-column: 1 / -1;">
+            <h2><span class="panel-icon">📋</span> JSON Schema</h2>
+            <p>Het gedeelde schema voor proof data validatie.</p>
+            <div class="schema-viewer" id="schema-viewer">
+                Schema wordt geladen...
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // ===== Shared State =====
+        const proofHistory = [];
+
+        // ===== Schnorr Parameters =====
+        const P = 23n;
+        const Q = 11n;
+        const G = 2n;
+        let schnorrState = { r: null, t: null, c: null, s: null, y: null };
+
+        // ===== Groth16 State =====
+        let groth16State = { proof: null, publicSignals: null };
+
+        // ===== Utilities =====
+        function mod(a, m) {
+            const r = a % m;
+            return r >= 0n ? r : r + m;
+        }
+
+        function modPow(base, exp, modn) {
+            base = mod(base, modn);
+            let res = 1n;
+            while (exp > 0n) {
+                if (exp & 1n) res = mod(res * base, modn);
+                base = mod(base * base, modn);
+                exp >>= 1n;
+            }
+            return res;
+        }
+
+        function randBelow(n) {
+            const buf = new Uint32Array(1);
+            crypto.getRandomValues(buf);
+            return BigInt(buf[0]) % n;
+        }
+
+        function showResult(id, message, type) {
+            const el = document.getElementById(id);
+            el.style.display = 'block';
+            el.className = `result ${type}`;
+            el.innerHTML = message;
+        }
+
+        // ===== Schema Loader =====
+        async function loadSchema() {
+            try {
+                const res = await fetch('../schemas/zkp-proof.schema.json');
+                const schema = await res.json();
+                document.getElementById('schema-viewer').textContent = JSON.stringify(schema, null, 2);
+            } catch (e) {
+                document.getElementById('schema-viewer').textContent = 'Schema niet gevonden. Run: npm run combine';
+            }
+        }
+
+        // ===== Proof History =====
+        function addToHistory(proofData) {
+            proofHistory.push(proofData);
+            renderHistory();
+        }
+
+        function renderHistory() {
+            const list = document.getElementById('proof-list');
+            if (proofHistory.length === 0) {
+                list.innerHTML = '<div style="color: #666; text-align: center; padding: 20px;">Nog geen proofs gegenereerd...</div>';
+                return;
+            }
+            list.innerHTML = proofHistory.map((p, i) => `
+                <div class="proof-item ${p.proofType}">
+                    <div>
+                        <span class="proof-type">${p.proofType.toUpperCase()}</span>
+                        <span style="margin-left: 10px; color: #888;">${new Date(p.timestamp).toLocaleTimeString()}</span>
+                        <div style="font-size: 0.9em; color: #aaa; margin-top: 5px;">
+                            ${p.proofType === 'groth16' ?
+                                `Kwadraat: ${p.publicInputs.publicSquare}` :
+                                `y = ${p.publicInputs.y}`}
+                        </div>
+                    </div>
+                    <span class="proof-status">${p.verified ? '✅' : '⏳'}</span>
+                </div>
+            `).join('');
+        }
+
+        function exportProofs() {
+            const data = JSON.stringify(proofHistory, null, 2);
+            const blob = new Blob([data], { type: 'application/json' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = 'zkp-proofs.json';
+            a.click();
+        }
+
+        // ===== Groth16 (ZK-SNARK) =====
+        document.getElementById('snark-secret').addEventListener('input', function() {
+            const secret = parseInt(this.value) || 0;
+            document.getElementById('snark-square').textContent = secret * secret || '--';
+        });
+
+        async function generateGroth16Proof() {
+            const secret = parseInt(document.getElementById('snark-secret').value);
+            if (isNaN(secret) || secret < 1) {
+                showResult('snark-result', '❌ Voer een geldig positief getal in', 'error');
+                return;
+            }
+
+            const publicSquare = secret * secret;
+            const btn = document.getElementById('btn-snark-prove');
+            btn.disabled = true;
+            btn.innerHTML = '<span class="loading"></span> Genereren...';
+
+            try {
+                const { proof, publicSignals } = await snarkjs.groth16.fullProve(
+                    { secret: secret.toString(), publicSquare: publicSquare.toString() },
+                    '../secret.wasm',
+                    '../secret_final.zkey'
+                );
+
+                groth16State.proof = proof;
+                groth16State.publicSignals = publicSignals;
+
+                const proofData = {
+                    version: "1.0.0",
+                    proofType: "groth16",
+                    timestamp: new Date().toISOString(),
+                    proof: proof,
+                    publicInputs: { publicSquare: publicSquare.toString() },
+                    verified: false
+                };
+
+                addToHistory(proofData);
+                showResult('snark-result', '✅ Proof gegenereerd! Klik op Verifieer om te controleren.', 'success');
+            } catch (e) {
+                showResult('snark-result', `❌ Fout: ${e.message}`, 'error');
+            }
+
+            btn.disabled = false;
+            btn.textContent = 'Genereer Proof';
+        }
+
+        async function verifyGroth16Proof() {
+            if (!groth16State.proof) {
+                showResult('snark-result', '❌ Genereer eerst een proof!', 'error');
+                return;
+            }
+
+            try {
+                const vkey = await (await fetch('../verification_key.json')).json();
+                const valid = await snarkjs.groth16.verify(vkey, groth16State.publicSignals, groth16State.proof);
+
+                if (valid) {
+                    // Update last proof in history
+                    if (proofHistory.length > 0) {
+                        const lastGroth16 = [...proofHistory].reverse().find(p => p.proofType === 'groth16');
+                        if (lastGroth16) lastGroth16.verified = true;
+                        renderHistory();
+                    }
+                    showResult('snark-result', `✅ PROOF GELDIG! Bewijs van kennis van √${groth16State.publicSignals[0]} zonder onthulling.`, 'success');
+                } else {
+                    showResult('snark-result', '❌ Proof is ONGELDIG!', 'error');
+                }
+            } catch (e) {
+                showResult('snark-result', `❌ Fout: ${e.message}`, 'error');
+            }
+        }
+
+        // ===== Schnorr Protocol =====
+        function updateSchnorrY() {
+            const x = BigInt(document.getElementById('schnorr-x').value || 0);
+            schnorrState.y = modPow(G, x, P);
+            document.getElementById('schnorr-y').textContent = schnorrState.y.toString();
+        }
+
+        document.getElementById('schnorr-x').addEventListener('input', updateSchnorrY);
+
+        function schnorrStep(step) {
+            document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+            event.target.classList.add('active');
+
+            if (step === 'commit') {
+                schnorrState.r = randBelow(Q);
+                schnorrState.t = modPow(G, schnorrState.r, P);
+                showResult('schnorr-result',
+                    `📌 Commitment gemaakt:\nr = ${schnorrState.r}\nt = g^r mod p = ${schnorrState.t}`, 'info');
+            } else if (step === 'challenge') {
+                if (!schnorrState.t) {
+                    showResult('schnorr-result', '❌ Maak eerst een commitment!', 'error');
+                    return;
+                }
+                schnorrState.c = randBelow(Q);
+                showResult('schnorr-result', `🎲 Challenge gekozen:\nc = ${schnorrState.c}`, 'info');
+            } else if (step === 'respond') {
+                if (!schnorrState.c) {
+                    showResult('schnorr-result', '❌ Kies eerst een challenge!', 'error');
+                    return;
+                }
+                const x = BigInt(document.getElementById('schnorr-x').value);
+                schnorrState.s = mod(schnorrState.r + schnorrState.c * x, Q);
+                showResult('schnorr-result', `📤 Response berekend:\ns = (r + c·x) mod q = ${schnorrState.s}`, 'info');
+            }
+        }
+
+        function schnorrVerify() {
+            if (!schnorrState.s) {
+                showResult('schnorr-result', '❌ Doorloop eerst alle stappen!', 'error');
+                return;
+            }
+
+            const lhs = modPow(G, schnorrState.s, P);
+            const rhs = mod(schnorrState.t * modPow(schnorrState.y, schnorrState.c, P), P);
+
+            const valid = lhs === rhs;
+
+            const proofData = {
+                version: "1.0.0",
+                proofType: "schnorr",
+                timestamp: new Date().toISOString(),
+                proof: {
+                    params: { p: P.toString(), q: Q.toString(), g: G.toString() },
+                    t: schnorrState.t.toString(),
+                    c: schnorrState.c.toString(),
+                    s: schnorrState.s.toString()
+                },
+                publicInputs: { y: schnorrState.y.toString() },
+                verified: valid
+            };
+
+            addToHistory(proofData);
+
+            if (valid) {
+                showResult('schnorr-result',
+                    `✅ PROOF GELDIG!\n\ng^s = ${lhs}\nt · y^c = ${rhs}\n\nKennis van x bewezen zonder onthulling!`, 'success');
+            } else {
+                showResult('schnorr-result',
+                    `❌ PROOF ONGELDIG!\n\ng^s = ${lhs}\nt · y^c = ${rhs}`, 'error');
+            }
+
+            // Reset for new proof
+            schnorrState = { ...schnorrState, r: null, t: null, c: null, s: null };
+        }
+
+        // ===== Initialize =====
+        updateSchnorrY();
+        loadSchema();
+    </script>
+</body>
+</html>
+HTMLEOF
+
+echo "✅ Combined dashboard generated at docs/combined/index.html"
+echo ""
+echo "Files created:"
+ls -la docs/combined/
+ls -la docs/schemas/

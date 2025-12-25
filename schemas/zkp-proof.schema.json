@@ -1,0 +1,138 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://hello-zkp.example/schemas/zkp-proof.schema.json",
+  "title": "ZKP Proof Schema",
+  "description": "Schema voor Zero-Knowledge Proof data die gedeeld wordt tussen meter en display",
+  "type": "object",
+  "required": ["version", "proofType", "proof"],
+  "properties": {
+    "version": {
+      "type": "string",
+      "const": "1.0.0",
+      "description": "Schema versie"
+    },
+    "proofType": {
+      "type": "string",
+      "enum": ["groth16", "schnorr"],
+      "description": "Type ZKP bewijs"
+    },
+    "timestamp": {
+      "type": "string",
+      "format": "date-time",
+      "description": "Tijdstip van proof generatie"
+    },
+    "proof": {
+      "oneOf": [
+        { "$ref": "#/$defs/groth16Proof" },
+        { "$ref": "#/$defs/schnorrProof" }
+      ]
+    },
+    "publicInputs": {
+      "type": "object",
+      "description": "Publieke inputs voor verificatie",
+      "properties": {
+        "publicSquare": {
+          "type": "string",
+          "pattern": "^[0-9]+$",
+          "description": "Publieke kwadraat waarde (voor groth16)"
+        },
+        "y": {
+          "type": "string",
+          "pattern": "^[0-9]+$",
+          "description": "Publieke sleutel y = g^x mod p (voor schnorr)"
+        }
+      }
+    },
+    "verified": {
+      "type": "boolean",
+      "description": "Of de proof geverifieerd is"
+    }
+  },
+  "$defs": {
+    "groth16Proof": {
+      "type": "object",
+      "title": "Groth16 ZK-SNARK Proof",
+      "required": ["pi_a", "pi_b", "pi_c", "protocol"],
+      "properties": {
+        "protocol": {
+          "type": "string",
+          "const": "groth16"
+        },
+        "pi_a": {
+          "type": "array",
+          "items": { "type": "string" },
+          "minItems": 3,
+          "maxItems": 3,
+          "description": "Proof element A (G1 punt)"
+        },
+        "pi_b": {
+          "type": "array",
+          "items": {
+            "type": "array",
+            "items": { "type": "string" },
+            "minItems": 2,
+            "maxItems": 2
+          },
+          "minItems": 3,
+          "maxItems": 3,
+          "description": "Proof element B (G2 punt)"
+        },
+        "pi_c": {
+          "type": "array",
+          "items": { "type": "string" },
+          "minItems": 3,
+          "maxItems": 3,
+          "description": "Proof element C (G1 punt)"
+        },
+        "curve": {
+          "type": "string",
+          "default": "bn128",
+          "description": "Elliptische curve gebruikt"
+        }
+      }
+    },
+    "schnorrProof": {
+      "type": "object",
+      "title": "Schnorr Sigma Protocol Proof",
+      "required": ["t", "c", "s", "params"],
+      "properties": {
+        "params": {
+          "type": "object",
+          "required": ["p", "q", "g"],
+          "properties": {
+            "p": {
+              "type": "string",
+              "pattern": "^[0-9]+$",
+              "description": "Prime modulus"
+            },
+            "q": {
+              "type": "string",
+              "pattern": "^[0-9]+$",
+              "description": "Subgroup orde"
+            },
+            "g": {
+              "type": "string",
+              "pattern": "^[0-9]+$",
+              "description": "Generator"
+            }
+          }
+        },
+        "t": {
+          "type": "string",
+          "pattern": "^[0-9]+$",
+          "description": "Commitment t = g^r mod p"
+        },
+        "c": {
+          "type": "string",
+          "pattern": "^[0-9]+$",
+          "description": "Challenge (random)"
+        },
+        "s": {
+          "type": "string",
+          "pattern": "^[0-9]+$",
+          "description": "Response s = (r + c*x) mod q"
+        }
+      }
+    }
+  }
+}

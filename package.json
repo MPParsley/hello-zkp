@@ -5,6 +5,7 @@
   "scripts": {
     "setup": "bash scripts/setup.sh",
     "build": "bash scripts/build.sh",
+    "combine": "bash scripts/combine.sh",
     "serve": "npx http-server docs -p 8080"
   },
   "devDependencies": {
